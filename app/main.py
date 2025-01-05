@@ -33,7 +33,7 @@ def main():
                 raw = f.read()
                 data = zlib.decompress(raw)
                 content = data.split(b'\0')[1].decode('ascii').rstrip('\n')
-                print(content)
+                print(content, end="")
             
         else:
             raise RuntimeError("File Not found")      
