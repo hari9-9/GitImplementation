@@ -29,7 +29,6 @@ def main():
         path_to_hash = '.git/objects/'+file_dir+'/'+hash_name
         file = Path(path_to_hash)
         if file.exists():
-            print("found")
             with open(path_to_hash,'rb') as f:
                 raw = f.read()
                 data = zlib.decompress(raw)
