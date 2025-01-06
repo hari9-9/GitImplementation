@@ -43,7 +43,7 @@ def hash_object(file_name):
             header = f"blob {len(raw)}\x00"
             storage = header.encode("ascii")+raw
             sha = hashlib.sha1(storage).hexdigest()
-            store_blob(sha,raw)
+            store_blob(sha,storage)
             print(sha,end="")
     else:
         raise RuntimeError("File Not found")
