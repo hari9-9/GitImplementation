@@ -25,3 +25,22 @@ tree sha: Tree SHA: c64d42ed459d9249cb2964187085b1ca18f49cd5
 
 python3 main.py ls-tree --name-only c64d42ed459d9249cb2964187085b1ca18f49cd5
 
+
+
+python ./../main.py init
+echo "hello world" > test_file_1.txt
+mkdir test_dir_1
+echo "hello world" > test_dir_1/test_file_2.txt
+mkdir test_dir_2
+echo "hello world" > test_dir_2/test_file_3.txt
+python ./../main.py write-tree
+
+
+python ./../main.py init
+echo "hello world" > test.txt
+python ./../main.py write-tree
+python ./../main.py commit-tree c3b8bb102afeca86037d5b5dd89ceeb0090eae9d -m "Initial commit"
+
+echo "hello world 2" > test.txt
+
+python ./../main.py commit-tree 72bfbdef47b78ffe53ed08262696acf5c53eabc9 -p 2eff23f0d8179c641a704b3fa5b22265e55bcc54 -m "Initial commit"

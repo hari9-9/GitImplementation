@@ -3,6 +3,7 @@ import os
 import zlib
 from pathlib import Path
 import hashlib
+import time
 
 
 def cat_file(file_hash):
@@ -130,7 +131,23 @@ def write_tree(directory = "."):
     store_blob(sha, header)  # Store the tree object
     return sha   
     
+def commit_tree(tree_sha, parent_sha, message):
+    author_name = "Coder <coder@example.com>"
+    timestamp = int(time.time())
+    timezone = time.strftime("%z")
 
+    commit_content = f"tree {tree_sha}\n"
+    if parent_sha:
+        commit_content += f"parent {parent_sha}\n"
+    commit_content += f"author {author_name} {timestamp} {timezone}\n"
+    commit_content += f"committer {author_name} {timestamp} {timezone}\n\n"
+    commit_content += f"{message}\n"
+
+    commit_raw = f"commit {len(commit_content)}\0".encode('utf-8') + commit_content.encode('utf-8')
+    commit_sha = hashlib.sha1(commit_raw).hexdigest()
+
+    store_blob(commit_sha, commit_raw)
+    return commit_sha
 
 
 def main():
@@ -166,10 +183,28 @@ def main():
             raise RuntimeError("Invalid arguments for ls-tree command.")
         
         ls_tree(param, tree_hash)
+    
     elif command == "write-tree":
         tree_sha = write_tree()
         print("Tree SHA")
         print(tree_sha)
+        
+    elif command == "commit-tree":
+        if "-p" in sys.argv:
+            if len(sys.argv) < 6 or sys.argv[3] != "-p" or sys.argv[5] != "-m":
+                raise RuntimeError("Invalid arguments for commit-tree command.")
+            tree_sha = sys.argv[2]
+            parent_sha = sys.argv[4]
+            message = sys.argv[6]
+        else:
+            if len(sys.argv) < 4 or sys.argv[3] != "-m":
+                raise RuntimeError("Invalid arguments for commit-tree command.")
+            tree_sha = sys.argv[2]
+            parent_sha = None
+            message = sys.argv[4]
+
+        commit_sha = commit_tree(tree_sha, parent_sha, message)
+        print(commit_sha)
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
