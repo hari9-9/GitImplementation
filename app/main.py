@@ -7,23 +7,36 @@ import time
 
 
 def cat_file(file_hash):
+    """
+    Reads and decompresses a Git object from the .git/objects directory and prints its contents.
+
+    :param file_hash: The SHA-1 hash of the object to retrieve.
+    :raises RuntimeError: If the file hash is not provided or if the file does not exist.
+    """
     if not file_hash:
         raise RuntimeError("File Hash not passed in command")
-        
-    file_dir = file_hash[:2]
-    hash_name = file_hash[2:]
-    path_to_hash = '.git/objects/' + file_dir + '/' + hash_name
+
+    file_dir = file_hash[:2]  # Extract the first two characters for the directory
+    hash_name = file_hash[2:]  # Remaining characters for the file name
+    path_to_hash = f".git/objects/{file_dir}/{hash_name}"
     file = Path(path_to_hash)
+
     if file.exists():
         with open(path_to_hash, 'rb') as f:
             raw = f.read()
-            data = zlib.decompress(raw)
+            data = zlib.decompress(raw)  # Decompress Git object
             content = data.split(b'\0')[1].decode('ascii').rstrip('\n')
             print(content, end="")
     else:
         raise RuntimeError("File Not found")
     
 def store_blob(sha, raw):
+    """
+    Stores a raw Git object in the .git/objects directory.
+
+    :param sha: The SHA-1 hash of the object to store.
+    :param raw: The raw content to be compressed and stored.
+    """
     git_path = os.path.join(os.getcwd(), ".git", "objects")
     sub_folder = sha[:2]
     file_name = sha[2:]
@@ -38,10 +51,12 @@ def store_blob(sha, raw):
     
 def hash_object(file_name, do_print=False):
     """
-    :param file_name: file to be hashed
-    :param do_print: whether to print the resulting hash (useful to avoid
-                     printing when hashing inside write_tree)
-    :return: the sha1 of the stored blob
+    Hashes a file and stores it as a Git blob object.
+
+    :param file_name: Path to the file to be hashed.
+    :param do_print: Whether to print the resulting hash or not.
+    :return: The SHA-1 hash of the stored blob.
+    :raises RuntimeError: If the file does not exist.
     """
     file = Path(file_name)
     if file.exists():
@@ -59,6 +74,13 @@ def hash_object(file_name, do_print=False):
 
 
 def ls_tree(param, tree_hash):
+    """
+    Lists the contents of a Git tree object.
+
+    :param param: Optional parameter to control output format.
+    :param tree_hash: The SHA-1 hash of the tree object to list.
+    :raises RuntimeError: If the tree object is not found or is invalid.
+    """
     # Locate the tree object file
     tree_dir = tree_hash[:2]
     tree_name = tree_hash[2:]
@@ -107,6 +129,13 @@ def ls_tree(param, tree_hash):
     
 
 def traverse_directory(directory="."):
+
+    """
+    Recursively traverses a directory and creates entries for Git storage.
+
+    :param directory: Path of the directory to traverse.
+    :return: List of tuples containing mode, name, and SHA-1 of each entry.
+    """    
     directory = os.path.abspath(directory)
     entries = []
     contents = sorted(
@@ -131,6 +160,12 @@ def traverse_directory(directory="."):
 
 
 def write_tree(directory="."):
+    """
+    Writes the current directory tree as a Git tree object.
+
+    :param directory: The directory to be written to a tree object.
+    :return: The SHA-1 hash of the stored tree.
+    """
     entries = traverse_directory(directory)
     tree_content = b""
     for mode, name, sha in entries:
@@ -143,6 +178,14 @@ def write_tree(directory="."):
     
 
 def commit_tree(tree_sha, parent_sha, message):
+    """
+    Creates a Git commit object and stores it in the .git/objects directory.
+
+    :param tree_sha: The SHA-1 of the tree object.
+    :param parent_sha: The SHA-1 of the parent commit (optional).
+    :param message: The commit message.
+    :return: The SHA-1 hash of the commit object.
+    """
     author_name = "Coder <coder@example.com>"
     timestamp = int(time.time())
     timezone = time.strftime("%z")
@@ -171,6 +214,21 @@ def commit_tree(tree_sha, parent_sha, message):
 
 
 def get_commit_state(commit_sha):
+    """
+    Retrieves and reconstructs the state of the repository at a specific commit.
+
+    :param commit_sha: The SHA-1 hash of the commit to retrieve.
+    :return: A dictionary representing the repository state (files and directories).
+
+    Steps performed:
+    1. Locate and read the commit object from the .git/objects directory.
+    2. Extract the tree SHA from the commit object.
+    3. Recursively read the tree object and reconstruct the repository file structure.
+    4. Read and return file contents stored in blob objects.
+    5. Print the reconstructed repository state.
+
+    :raises RuntimeError: If the commit object, tree object, or blob object is not found.
+    """
     # Step 1: Locate and read the commit object
     commit_dir = commit_sha[:2]
     commit_file = commit_sha[2:]
@@ -196,6 +254,15 @@ def get_commit_state(commit_sha):
 
     # Step 3: Recursively read the tree and reconstruct the file structure
     def read_tree(tree_sha, current_path=""):
+        """
+        Recursively reads a tree object and reconstructs the directory structure.
+
+        :param tree_sha: The SHA-1 hash of the tree object to read.
+        :param current_path: The current directory path (used for recursion).
+        :return: A dictionary representing the tree structure (files and directories).
+
+        :raises RuntimeError: If the tree object is not found.
+        """
         tree_dir = tree_sha[:2]
         tree_file = tree_sha[2:]
         tree_path = f".git/objects/{tree_dir}/{tree_file}"
@@ -230,7 +297,15 @@ def get_commit_state(commit_sha):
         return repo_state
 
     # Step 4: Read the contents of blob objects
-    def read_blob(blob_sha):
+    def read_blob(blob_sha):        
+        """
+        Reads a blob object and retrieves the file contents.
+
+        :param blob_sha: The SHA-1 hash of the blob object to read.
+        :return: The contents of the file as a string.
+
+        :raises RuntimeError: If the blob object is not found.
+        """
         blob_dir = blob_sha[:2]
         blob_file = blob_sha[2:]
         blob_path = f".git/objects/{blob_dir}/{blob_file}"
