@@ -28,7 +28,7 @@ def store_blob(sha,raw):
     file_name = sha[2:]
     
     path = os.path.join(git_path,sub_folder)
-    os.mkdir(path)
+    os.makedirs(path, exist_ok=True)
     
     with open(os.path.join(path,file_name),"wb") as f:
         compressed = zlib.compress(raw)
@@ -45,6 +45,7 @@ def hash_object(file_name):
             sha = hashlib.sha1(storage).hexdigest()
             store_blob(sha,storage)
             print(sha,end="")
+            return sha
     else:
         raise RuntimeError("File Not found")
 
@@ -95,7 +96,42 @@ def ls_tree(param, tree_hash):
             # Format matches `git ls-tree` output
             print(f"{mode} {obj_type} {sha_hex}\t{name}")
     
-  
+
+def traverse_directory(directory = "."):
+    directory = os.path.abspath(directory)
+    entries = []
+    contents = sorted(
+    os.listdir(directory),
+    key=lambda x: x if os.path.isfile(os.path.join(directory, x)) else f"{x}/",
+)
+    for item in contents:
+        if item == ".git":
+            continue
+        path = os.path.join(directory,item)
+        if os.path.isdir(path):
+            sha = write_tree(path)
+            mode = "40000"
+        else:
+            sha = hash_object(path)
+            mode = "100644"
+        sha1 = int.to_bytes(int(sha, 16), length=20, byteorder="big")
+        entries.append((mode,item,sha1))
+    return entries
+
+
+def write_tree(directory = "."):
+    entries = traverse_directory(directory)
+    tree_content = b""
+    for mode ,name, sha in entries:
+        tree_content += f"{mode} {name}\x00".encode('utf-8') + sha
+    
+    header = f"tree {len(tree_content)}\x00".encode('utf-8') + tree_content
+    sha = hashlib.sha1(header).hexdigest()
+    store_blob(sha, header)  # Store the tree object
+    return sha   
+    
+
+
 
 def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -130,6 +166,10 @@ def main():
             raise RuntimeError("Invalid arguments for ls-tree command.")
         
         ls_tree(param, tree_hash)
+    elif command == "write-tree":
+        tree_sha = write_tree()
+        print("Tree SHA")
+        print(tree_sha)
     else:
         raise RuntimeError(f"Unknown command #{command}")
 

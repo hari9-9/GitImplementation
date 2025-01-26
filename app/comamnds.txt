@@ -6,3 +6,22 @@
 
 
 ./run.sh hash-object -w test.txt
+
+
+    git_path = os.path.join(os.getcwd(), ".git/objects")
+    os.mkdir(os.path.join(git_path, sha[0:2]))
+    with open(os.path.join(git_path, sha[0:2], sha[2:]), "wb") as file:
+        file.write(zlib.compress(store))
+        
+        
+3b18e512dba79e4c8300dd08aeb37f8e728b8dad
+
+
+./run.sh cat-file -p 3b18e512dba79e4c8300dd08aeb37f8e728b8dad
+
+
+tree sha: Tree SHA: c64d42ed459d9249cb2964187085b1ca18f49cd5
+
+
+python3 main.py ls-tree --name-only c64d42ed459d9249cb2964187085b1ca18f49cd5
+
