@@ -40,7 +40,12 @@ python ./../main.py init
 echo "hello world" > test.txt
 python ./../main.py write-tree
 python ./../main.py commit-tree c3b8bb102afeca86037d5b5dd89ceeb0090eae9d -m "Initial commit"
+python ./../main.py show 51dfbf4397f60845c2b6d97de1a9f07d83f78ea8
+
 
 echo "hello world 2" > test.txt
+python ./../main.py write-tree
+python ./../main.py commit-tree 72bfbdef47b78ffe53ed08262696acf5c53eabc9 -p 51dfbf4397f60845c2b6d97de1a9f07d83f78ea8 -m "Initial commit 2"
 
-python ./../main.py commit-tree 72bfbdef47b78ffe53ed08262696acf5c53eabc9 -p 2eff23f0d8179c641a704b3fa5b22265e55bcc54 -m "Initial commit"
+python ./../main.py show ebb1d8bf027a783a2450dd08b5a6cd3734479b32
+

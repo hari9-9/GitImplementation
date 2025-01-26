@@ -8,14 +8,14 @@ import time
 
 def cat_file(file_hash):
     if not file_hash:
-            raise RuntimeError("File Hash not passed in command")
+        raise RuntimeError("File Hash not passed in command")
         
     file_dir = file_hash[:2]
     hash_name = file_hash[2:]
-    path_to_hash = '.git/objects/'+file_dir+'/'+hash_name
+    path_to_hash = '.git/objects/' + file_dir + '/' + hash_name
     file = Path(path_to_hash)
     if file.exists():
-        with open(path_to_hash,'rb') as f:
+        with open(path_to_hash, 'rb') as f:
             raw = f.read()
             data = zlib.decompress(raw)
             content = data.split(b'\0')[1].decode('ascii').rstrip('\n')
@@ -23,29 +23,36 @@ def cat_file(file_hash):
     else:
         raise RuntimeError("File Not found")
     
-def store_blob(sha,raw):
-    git_path = os.path.join(os.getcwd(),".git/objects")
+def store_blob(sha, raw):
+    git_path = os.path.join(os.getcwd(), ".git", "objects")
     sub_folder = sha[:2]
     file_name = sha[2:]
     
-    path = os.path.join(git_path,sub_folder)
+    path = os.path.join(git_path, sub_folder)
     os.makedirs(path, exist_ok=True)
     
-    with open(os.path.join(path,file_name),"wb") as f:
+    with open(os.path.join(path, file_name), "wb") as f:
         compressed = zlib.compress(raw)
         f.write(compressed)
     
     
-def hash_object(file_name):
+def hash_object(file_name, do_print=False):
+    """
+    :param file_name: file to be hashed
+    :param do_print: whether to print the resulting hash (useful to avoid
+                     printing when hashing inside write_tree)
+    :return: the sha1 of the stored blob
+    """
     file = Path(file_name)
     if file.exists():
-        with open(file_name,'rb') as f:
+        with open(file_name, 'rb') as f:
             raw = f.read()
             header = f"blob {len(raw)}\x00"
-            storage = header.encode("ascii")+raw
+            storage = header.encode("ascii") + raw
             sha = hashlib.sha1(storage).hexdigest()
-            store_blob(sha,storage)
-            print(sha,end="")
+            store_blob(sha, storage)
+            if do_print:
+                print(sha, end="")
             return sha
     else:
         raise RuntimeError("File Not found")
@@ -81,7 +88,8 @@ def ls_tree(param, tree_hash):
         # Convert to readable format
         mode = mode.decode("ascii")
         name = name.decode("utf-8")
-        sha_hex = hashlib.sha1(sha).hexdigest()
+        # BUG FIX: Use sha.hex() instead of re-hashing the 20 bytes
+        sha_hex = sha.hex()  
         obj_type = "tree" if mode == "40000" else "blob"
         entries.append((mode, obj_type, sha_hex, name))
     
@@ -98,32 +106,34 @@ def ls_tree(param, tree_hash):
             print(f"{mode} {obj_type} {sha_hex}\t{name}")
     
 
-def traverse_directory(directory = "."):
+def traverse_directory(directory="."):
     directory = os.path.abspath(directory)
     entries = []
     contents = sorted(
-    os.listdir(directory),
-    key=lambda x: x if os.path.isfile(os.path.join(directory, x)) else f"{x}/",
-)
+        os.listdir(directory),
+        key=lambda x: x if os.path.isfile(os.path.join(directory, x)) else f"{x}/",
+    )
+
     for item in contents:
         if item == ".git":
             continue
-        path = os.path.join(directory,item)
+        path = os.path.join(directory, item)
         if os.path.isdir(path):
             sha = write_tree(path)
             mode = "40000"
         else:
-            sha = hash_object(path)
+            # BUG FIX: Avoid printing the hash here to keep output clean
+            sha = hash_object(path, do_print=False)
             mode = "100644"
         sha1 = int.to_bytes(int(sha, 16), length=20, byteorder="big")
-        entries.append((mode,item,sha1))
+        entries.append((mode, item, sha1))
     return entries
 
 
-def write_tree(directory = "."):
+def write_tree(directory="."):
     entries = traverse_directory(directory)
     tree_content = b""
-    for mode ,name, sha in entries:
+    for mode, name, sha in entries:
         tree_content += f"{mode} {name}\x00".encode('utf-8') + sha
     
     header = f"tree {len(tree_content)}\x00".encode('utf-8') + tree_content
@@ -131,31 +141,127 @@ def write_tree(directory = "."):
     store_blob(sha, header)  # Store the tree object
     return sha   
     
+
 def commit_tree(tree_sha, parent_sha, message):
     author_name = "Coder <coder@example.com>"
     timestamp = int(time.time())
     timezone = time.strftime("%z")
 
-    commit_content = f"tree {tree_sha}\n"
+    # Ensure correct commit format
+    commit_content = f"\ntree {tree_sha}\n"
     if parent_sha:
         commit_content += f"parent {parent_sha}\n"
     commit_content += f"author {author_name} {timestamp} {timezone}\n"
     commit_content += f"committer {author_name} {timestamp} {timezone}\n\n"
     commit_content += f"{message}\n"
 
-    commit_raw = f"commit {len(commit_content)}\0".encode('utf-8') + commit_content.encode('utf-8')
-    commit_sha = hashlib.sha1(commit_raw).hexdigest()
+    commit_raw = (
+        f"commit {len(commit_content.encode('utf-8'))}".encode("utf-8")
+        + b'\0'
+        + commit_content.encode("utf-8")
+    )
 
+    # Debug print
+    print("Commit Content to be Stored:")
+    print(commit_raw.decode("utf-8"))
+
+    commit_sha = hashlib.sha1(commit_raw).hexdigest()
     store_blob(commit_sha, commit_raw)
     return commit_sha
 
 
+def get_commit_state(commit_sha):
+    # Step 1: Locate and read the commit object
+    commit_dir = commit_sha[:2]
+    commit_file = commit_sha[2:]
+    commit_path = f".git/objects/{commit_dir}/{commit_file}"
+    
+    if not os.path.exists(commit_path):
+        raise RuntimeError(f"Commit {commit_sha} not found in .git/objects")
+
+    with open(commit_path, "rb") as f:
+        commit_raw = zlib.decompress(f.read())
+
+    # Step 2: Extract the tree SHA from the commit object
+    commit_lines = commit_raw.decode("utf-8").splitlines()
+    print(commit_raw.decode("utf-8"))
+    tree_sha = None
+    for line in commit_lines:
+        if line.startswith("tree"):
+            tree_sha = line.split()[1]
+            break
+
+    if not tree_sha:
+        raise RuntimeError("No tree SHA found in commit object")
+
+    # Step 3: Recursively read the tree and reconstruct the file structure
+    def read_tree(tree_sha, current_path=""):
+        tree_dir = tree_sha[:2]
+        tree_file = tree_sha[2:]
+        tree_path = f".git/objects/{tree_dir}/{tree_file}"
+
+        if not os.path.exists(tree_path):
+            raise RuntimeError(f"Tree object {tree_sha} not found")
+
+        with open(tree_path, "rb") as f:
+            tree_raw = zlib.decompress(f.read())
+
+        _, tree_data = tree_raw.split(b'\x00', 1)
+        repo_state = {}
+
+        while tree_data:
+            mode, tree_data = tree_data.split(b" ", 1)
+            name, tree_data = tree_data.split(b"\x00", 1)
+            sha = tree_data[:20]
+            tree_data = tree_data[20:]
+
+            mode = mode.decode("utf-8")
+            name = name.decode("utf-8")
+            # BUG FIX: Convert directly to hex, do NOT re-hash
+            sha_hex = sha.hex()
+            
+            full_path = os.path.join(current_path, name)
+
+            if mode == "40000":  # It's a directory (tree object)
+                repo_state[full_path] = read_tree(sha_hex, full_path)
+            else:  # It's a file (blob object)
+                repo_state[full_path] = read_blob(sha_hex)
+
+        return repo_state
+
+    # Step 4: Read the contents of blob objects
+    def read_blob(blob_sha):
+        blob_dir = blob_sha[:2]
+        blob_file = blob_sha[2:]
+        blob_path = f".git/objects/{blob_dir}/{blob_file}"
+
+        if not os.path.exists(blob_path):
+            raise RuntimeError(f"Blob object {blob_sha} not found")
+
+        with open(blob_path, "rb") as f:
+            blob_raw = zlib.decompress(f.read())
+
+        # Extract content after header
+        content = blob_raw.split(b"\x00", 1)[1].decode("utf-8")
+        return content
+
+    # Step 5: Get the full repository state from the commit tree
+    repo_state = read_tree(tree_sha)
+
+    # Step 6: Print the repository state
+    for path, content in repo_state.items():
+        if isinstance(content, dict):
+            print(f"Directory: {path}/")
+        else:
+            print(f"File: {path}")
+            print(content)
+
+    return repo_state
+
+
 def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!", file=sys.stderr)
 
-    # Uncomment this block to pass the first stage
-    #
     command = sys.argv[1]
     if command == "init":
         os.mkdir(".git")
@@ -171,13 +277,13 @@ def main():
     
     elif command == "hash-object" and sys.argv[2] == "-w":
         file_name = sys.argv[3]
-        hash_object(file_name)
+        # Here we do want to print the resulting hash
+        hash_object(file_name, do_print=True)
         
     elif command == "ls-tree":
-        # Handle optional `--name-only` parameter
-        if len(sys.argv) == 4:  # Includes `ls-tree`, `--name-only`, and `tree_sha`
+        if len(sys.argv) == 4:  # `ls-tree --name-only tree_sha`
             param, tree_hash = sys.argv[2], sys.argv[3]
-        elif len(sys.argv) == 3:  # Only includes `ls-tree` and `tree_sha`
+        elif len(sys.argv) == 3:  # `ls-tree tree_sha`
             param, tree_hash = None, sys.argv[2]
         else:
             raise RuntimeError("Invalid arguments for ls-tree command.")
@@ -205,6 +311,10 @@ def main():
 
         commit_sha = commit_tree(tree_sha, parent_sha, message)
         print(commit_sha)
+
+    elif command == "show":
+        commit_sha = sys.argv[2]
+        get_commit_state(commit_sha)
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
